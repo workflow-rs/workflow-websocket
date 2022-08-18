@@ -63,7 +63,7 @@ impl WebSocketInterface {
     pub async fn connect(self : &Arc<Self>) -> Result<(),Error> {
         let self_ = self.clone();
         
-        trace!("connect...");
+        log_trace!("connect...");
         if self_.inner.lock().unwrap().is_some() {
             return Err(Error::AlreadyConnected);
         }
@@ -152,7 +152,7 @@ impl WebSocketInterface {
                             }
                         },
                         DispatchMessage::DispatcherShutdown => {
-                            trace!("WebSocket - local close");
+                            log_trace!("WebSocket - local close");
                             ws_sender.close().await?;
                             break;
                         }
@@ -179,7 +179,7 @@ impl WebSocketInterface {
                                                 .map_err(|_|Error::ReceiveChannel)?;
                                         },
                                         WsMessage::Close(_) => {
-                                            trace!("WebSocket: gracefully closed connection");
+                                            log_trace!("WebSocket: gracefully closed connection");
                                             self.receiver_tx.send(Message::Ctl(Ctl::Closed)).await?;
                                             break;
                                         },
@@ -221,7 +221,7 @@ impl WebSocketInterface {
     }
 
     // async fn reconnect(self : &Arc<Self>) -> Result<(),Error> {
-    //     trace!("... starting reconnect");
+    //     log_trace!("... starting reconnect");
 
     //     self.close().await?;
     //     self.connect().await?;

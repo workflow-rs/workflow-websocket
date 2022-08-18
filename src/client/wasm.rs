@@ -120,7 +120,7 @@ impl WebSocketInterface {
 
     pub async fn connect(self : &Arc<Self>) -> Result<(),Error> {
         
-        trace!("connect...");
+        log_trace!("connect...");
         let mut inner = self.inner.lock().unwrap();
         if inner.is_some() {
             return Err(Error::AlreadyConnected);
@@ -137,20 +137,20 @@ impl WebSocketInterface {
         let receiver_tx_ = receiver_tx.clone();
         let onmessage = Closure::<dyn FnMut(_)>::new(move |event: WsMessageEvent| {
             let msg: Message = event.try_into().expect("MessageEvent Error");
-            trace!("received message: {:?}", msg);
+            log_trace!("received message: {:?}", msg);
             receiver_tx_.try_send(msg).expect("WebSocket: Unable to send message via the receiver_tx channel");
         });
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     
         let onerror = Closure::<dyn FnMut(_)>::new(move |event: WsErrorEvent| {
-            trace!("error event: {:?}", event);
+            log_trace!("error event: {:?}", event);
         });
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
         let receiver_tx_ = receiver_tx.clone();
         let onopen = Closure::<dyn FnMut()>::new(move || {
             receiver_tx_.try_send(Message::Ctl(Ctl::Open)).expect("WebSocket: Unable to send message via the receiver_tx channel");
-            trace!("open event");
+            log_trace!("open event");
             if connect_completer.lock().unwrap().is_some() {
                 let completer = connect_completer.lock().unwrap().take().unwrap();
                 crate::task::spawn(async move {
@@ -165,16 +165,16 @@ impl WebSocketInterface {
         let self_ = self.clone();
         let onclose = Closure::<dyn FnMut(_)>::new(move |event : WsCloseEvent| {
             let event: CloseEvent = event.into();
-            trace!("close event: {:?}", event);
+            log_trace!("close event: {:?}", event);
             receiver_tx_.try_send(Message::Ctl(Ctl::Closed)).expect("WebSocket: Unable to send message via the receiver_tx channel");
 
             Self::cleanup(&ws_);
             let self_ = self_.clone();
             crate::task::spawn(async move {
-                trace!("reconnecting...");
+                log_trace!("reconnecting...");
                 self_.shutdown_dispatcher().await.expect("Unable to shutdown dispatcher");
                 if *self_.reconnect.lock().unwrap() {
-                    trace!("sleeping... 1 sec...");
+                    log_trace!("sleeping... 1 sec...");
                     async_std::task::sleep(std::time::Duration::from_millis(1000)).await;
                     self_.reconnect().await.ok();
                 }
@@ -212,14 +212,14 @@ impl WebSocketInterface {
         match message {
             Message::Binary(data) => {
                 match ws.send_with_u8_array(&data) {
-                    Ok(_) => trace!("binary message successfully sent"),
-                    Err(err) => trace!("error sending message: {:?}", err),
+                    Ok(_) => log_trace!("binary message successfully sent"),
+                    Err(err) => log_trace!("error sending message: {:?}", err),
                 }
             },
             Message::Text(text) => {
                 match ws.send_with_str(&text) {
-                    Ok(_) => trace!("message successfully sent"),
-                    Err(err) => trace!("error sending message: {:?}", err),
+                    Ok(_) => log_trace!("message successfully sent"),
+                    Err(err) => log_trace!("error sending message: {:?}", err),
                 }
             },
             _ => { }
@@ -250,14 +250,14 @@ impl WebSocketInterface {
                         match message {
                             Message::Binary(data) => {
                                 match ws.send_with_u8_array(&data) {
-                                    Ok(_) => trace!("binary message successfully sent"),
-                                    Err(err) => trace!("error sending message: {:?}", err),
+                                    Ok(_) => log_trace!("binary message successfully sent"),
+                                    Err(err) => log_trace!("error sending message: {:?}", err),
                                 }
                             },
                             Message::Text(text) => {
                                 match ws.send_with_str(&text) {
-                                    Ok(_) => trace!("message successfully sent"),
-                                    Err(err) => trace!("error sending message: {:?}", err),
+                                    Ok(_) => log_trace!("message successfully sent"),
+                                    Err(err) => log_trace!("error sending message: {:?}", err),
                                 }
                             },
                             Message::Ctl(_) => {
@@ -274,8 +274,8 @@ impl WebSocketInterface {
                                 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
                                 let _result = ws.send_with_u8_array(&data);
                                 //  {
-                                    //     Ok(_) => trace!("binary message successfully sent"),
-                                    //     Err(err) => trace!("error sending message: {:?}", err),
+                                    //     Ok(_) => log_trace!("binary message successfully sent"),
+                                    //     Err(err) => log_trace!("error sending message: {:?}", err),
                                     // }
                                 },
                                 Message::Text(text) => {
@@ -295,10 +295,10 @@ impl WebSocketInterface {
                     }
                 }
 
-                trace!("loop {}",key);
+                log_trace!("loop {}",key);
             }
 
-            trace!("signaling SHUTDOWN...");
+            log_trace!("signaling SHUTDOWN...");
             completer.complete(()).await;
 
         });
@@ -321,9 +321,9 @@ impl WebSocketInterface {
     
             let dispatcher = self.inner.lock().unwrap().as_mut().unwrap().dispatcher_shutdown.take().unwrap();
     
-            trace!("!!!! waiting for dispatcher to shutdown...");
+            log_trace!("!!!! waiting for dispatcher to shutdown...");
             dispatcher.await;
-            trace!("!!!! dispatcher shutdown is done!");
+            log_trace!("!!!! dispatcher shutdown is done!");
     
             // },
             // None => { }
@@ -345,7 +345,7 @@ impl WebSocketInterface {
         Ok(())
     }
     async fn reconnect(self : &Arc<Self>) -> Result<(),Error> {
-        trace!("... starting reconnect");
+        log_trace!("... starting reconnect");
 
         self.close().await?;
         self.connect().await?;

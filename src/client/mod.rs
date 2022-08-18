@@ -161,7 +161,7 @@ mod testing {
 
         let tx = ws.dispatcher_tx.clone();
         let closure = Closure::new(move ||{
-            trace!("tick...");
+            log_trace!("tick...");
             let msg : Message = "hello world".into();
             tx.try_send(DispatchMessage::Post(msg)).expect("XXX error sending message ");
         });
@@ -178,7 +178,7 @@ mod testing {
             loop {
                 let message = rx.recv().await.unwrap();
 
-                trace!("* * * * * ====>  RECEIVING MESSAGE: {:?}", message);
+                log_trace!("* * * * * ====>  RECEIVING MESSAGE: {:?}", message);
 
                 // match message {
                 //     Message::Binary(data) => {
