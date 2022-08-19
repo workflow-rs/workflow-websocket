@@ -25,7 +25,6 @@ pub use settings::Settings;
 use std::sync::Arc;
 use async_std::channel::{Receiver,Sender,unbounded};
 use message::DispatchMessage;
-use workflow_core::task;
 
 #[derive(Clone)]
 pub struct WebSocket {
@@ -41,7 +40,6 @@ impl WebSocket {
 
         let (receiver_tx, receiver_rx) = unbounded::<Message>();
         let (dispatcher_tx, dispatcher_tx_rx) = match settings.strategy {
-            // DispatchStrategy::None => { (None,None) },
             DispatchStrategy::Post | DispatchStrategy::Ack => { 
                 let tx_rx = unbounded::<DispatchMessage>();
                 let tx = tx_rx.0.clone();
@@ -134,63 +132,5 @@ impl WebSocket {
 
     //     Ok(())
     // }
-
-}
-
-#[allow(dead_code)]
-static mut WS : Option<WebSocket> = None;
-
-mod testing {
-    use super::*;
-    use wasm_bindgen::prelude::*;
-    use workflow_log::*;
-    use workflow_wasm::timers;
-
-    #[allow(dead_code)]
-    // #[wasm_bindgen(start)]
-    pub fn start_websocket() -> Result<(),Error> {
-
-        let ws = WebSocket::new("ws://localhost:9090", Settings::default())?;
-        // let ws = WebSocket::new("wss://echo.websocket.events")?;
-
-        unsafe { WS = Some(ws.clone() )};
-
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        let tx = ws.dispatcher_tx.clone();
-        let closure = Closure::new(move ||{
-            log_trace!("tick...");
-            let msg : Message = "hello world".into();
-            tx.try_send(DispatchMessage::Post(msg)).expect("XXX error sending message ");
-        });
-        timers::native::set_interval(&closure, 1_000)?;
-        closure.forget();
-
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        let rx = ws.receiver_rx.clone();
-        task::spawn(async move {
-
-            loop {
-                let message = rx.recv().await.unwrap();
-
-                log_trace!("* * * * * ====>  RECEIVING MESSAGE: {:?}", message);
-
-                // match message {
-                //     Message::Binary(data) => {
-                //     },
-                //     Message::Text(text) => {
-                //     }
-                // }
-            }
-
-        });
-
-        Ok(())
-    }
 
 }

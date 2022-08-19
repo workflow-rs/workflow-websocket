@@ -72,7 +72,7 @@ impl WebSocketInterface {
         let mut connect_tx = Some(connect_tx);
 
         self_.reconnect.store(true, Ordering::SeqCst);
-        core::task::spawn(async move {
+        core::sync::task::spawn(async move {
             
             loop {
 
