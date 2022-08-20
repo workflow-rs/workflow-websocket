@@ -16,33 +16,67 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Indicates that no messages have been received
+    /// within the specified timeout period
     #[error("Connection timeout")]
     ConnectionTimeout,
 
+    /// Indicates that the data received is not a 
+    /// valid websocket message
     #[error("Malformed handshake message")]
     MalformedHandshake,
 
+    /// Indicates handler negotiation failure
+    /// This error code is reserved for structs
+    /// implementing WebSocket handler.
     #[error("Negotiation failure")]
     NegotiationFailure,
-
+    
+    /// Indicates handler negotiation failure
+    /// with a specific reason
+    /// This error code is reserved for structs
+    /// implementing WebSocket handler.
     #[error("Negotiation failure: {0}")]
     NegotiationFailureWithReason(String),
 
+    /// WebSocket error produced by the underlying
+    /// Tungstenite WebSocket crate
     #[error("WebSocket error: {0}")]
     WebSocketError(#[from] tungstenite::Error),
 
 }
 
+/// WebSocketHandler trait that represents the WebSocket processor
+/// functionality.  This trait is supplied to the WebSocket
+/// which subsequently invokes it's functions during websocket
+/// connection and messages.  The trait can override `with_handshake()` method
+/// to enable invocation of the `handshake()` method upon receipt of the
+/// first valid websocket message from the incoming connection.
 #[async_trait]
-pub trait WebSocketHandler {
+pub trait WebSocketHandler 
+where Arc<Self> : Sync
+{
+    /// Context type used by impl trait to represent websocket connection
     type Context : Send + Sync;
+    /// Enables optional invocation of the handshake method with the first
+    /// message received form the incoming websocket
     fn with_handshake(self : &Arc<Self>) -> bool { false }
+    /// Sets the default connection timeout if no messages have been received
     fn with_timeout(self : &Arc<Self>) -> Duration { Duration::from_secs(3) }
+    /// Called immediately when connection is established
+    /// This function can return an error to terminate the connection
     async fn connect(self : &Arc<Self>, peer: SocketAddr) -> Result<Self::Context>;
-    async fn handshake(self : &Arc<Self>, ctx : &Self::Context, msg : Message, sink : &UnboundedSender<tungstenite::Message>) -> Result<()>;
+    /// Called upon receipt of the first websocket message if `with_handshake()` returns true
+    /// This function can return an error to terminate the connection
+    async fn handshake(self : &Arc<Self>, _ctx : &Self::Context, _msg : Message, _sink : &UnboundedSender<tungstenite::Message>) -> Result<()> {  Ok(()) }
+    /// Called for every websocket message
+    /// This function can return an error to terminate the connection
     async fn message(self : &Arc<Self>, ctx : &Self::Context, msg : Message, sink : &UnboundedSender<tungstenite::Message>) -> Result<()>;
 }
 
+/// WebSocketServer that provides the main websocket connection
+/// and message processing loop that delivers messages to the 
+/// installed WebSocketHandler trait.
 pub struct WebSocketServer<T> 
 where T : WebSocketHandler + Send + Sync + 'static + Sized
 {
