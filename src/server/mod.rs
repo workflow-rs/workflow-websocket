@@ -7,7 +7,7 @@ use tokio::sync::mpsc::*;
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::Message;
 use tungstenite::Error as WebSocketError;
-use tokio_tungstenite::accept_async;
+use tokio_tungstenite::{accept_async, WebSocketStream};
 use futures_util::{SinkExt, StreamExt};
 use workflow_log::*;
 use thiserror::Error;
@@ -63,7 +63,8 @@ pub enum Error {
 /// first valid websocket message from the incoming connection.
 #[async_trait]
 pub trait WebSocketHandler 
-where Arc<Self> : Sync
+where 
+    Arc<Self> : Sync
 {
     /// Context type used by impl trait to represent websocket connection
     type Context : Send + Sync;
@@ -76,7 +77,7 @@ where Arc<Self> : Sync
     /// This function can return an error to terminate the connection
     async fn connect(self : &Arc<Self>, peer: SocketAddr) -> Result<Self::Context>;
     /// Called upon websocket disconnection
-    async fn disconnect(self : &Arc<Self>, _ctx : &Self::Context, result : Result<()>) -> Result<()> { result }
+    async fn disconnect(self : &Arc<Self>, _ctx : Self::Context, _result : Result<()>) { }
     /// Called upon receipt of the first websocket message if `with_handshake()` returns true
     /// This function can return an error to terminate the connection
     async fn handshake(self : &Arc<Self>, _ctx : &Self::Context, _msg : Message, _sink : &UnboundedSender<tungstenite::Message>) -> Result<()> {  Ok(()) }
@@ -119,8 +120,16 @@ where T : WebSocketHandler + Send + Sync + 'static
 
     async fn handle_connection(self: &Arc<Self>, peer: SocketAddr, stream: TcpStream) -> Result<()> {
         let ws_stream = accept_async(stream).await?;
-        let ctx = self.handler.connect(peer).await?;
-        log_trace!("New WebSocket connection: {}", peer);
+        let mut ctx = self.handler.connect(peer).await?;
+        log_trace!("New WebSocket connection from: {}", peer);
+
+        let result = self.connection_task(&mut ctx, ws_stream).await;
+        self.handler.disconnect(ctx, result).await;
+
+        Ok(())
+    }
+
+    async fn connection_task(self: &Arc<Self>, ctx : &mut T::Context, ws_stream: WebSocketStream<TcpStream>) -> Result<()> {
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
         let (sink, mut sink_receiver) = tokio::sync::mpsc::unbounded_channel::<tungstenite::Message>();
         
@@ -145,7 +154,6 @@ where T : WebSocketHandler + Send + Sync + 'static
         }
 
         // let mut interval = tokio::time::interval(Duration::from_millis(1000));
-        let mut result : Result<()> = Ok(());
         loop {
             tokio::select! {
                 msg = sink_receiver.recv() => {
@@ -154,39 +162,23 @@ where T : WebSocketHandler + Send + Sync + 'static
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
+                            let msg = msg?;
                             match msg {
-                                Ok(msg) => {
-                                    match msg {
-                                        Message::Binary(_) | Message::Text(_)  => {
-                                            if let Err(err) = self.handler.message(&ctx, msg, &sink).await {
-                                                result = Err(err);
-                                                break;
-                                            }
-                                        },
-                                        Message::Close(_) => {
-                                            if let Err(err) = self.handler.message(&ctx, msg, &sink).await {
-                                                result = Err(err);
-                                                break;
-                                            }
-                                            log_trace!("gracefully closing connection");
-                                            break;
-                                        },
-                                        _ => {
-                                            // TODO - should we respond to Message::Ping(_) ?
-                                        }
-                                    }
+                                Message::Binary(_) | Message::Text(_)  => {
+                                    self.handler.message(&ctx, msg, &sink).await?;
                                 },
-                                Err(err) => {
-                                    log_error!("Closing connection: {}", err);
-                                    result = Err(Error::WebSocketError(err));
+                                Message::Close(_) => {
+                                    self.handler.message(&ctx, msg, &sink).await?;
+                                    log_trace!("gracefully closing connection");
                                     break;
+                                },
+                                _ => {
+                                    // TODO - should we respond to Message::Ping(_) ?
                                 }
                             }
                         }
                         None => {
-                            log_error!("Connection terminated absormaly");
-                            result = Err(Error::ConnectionClosed);
-                            break;
+                            return Err(Error::ConnectionClosed);
                         }
                     }
                 }
@@ -194,22 +186,20 @@ where T : WebSocketHandler + Send + Sync + 'static
                 //     ws_sender.send(Message::Text("tick".to_owned())).await?;
                 // }
             }
-
-            log_trace!("LOOP TASK FINISHED SELECT!");
         }
         
-        self.handler.disconnect(&ctx,result).await?;
-
-        log_trace!("LOOP TASK FINISHED LOOP!");
         Ok(())
     }
 
     pub async fn listen(self : &Arc<Self>, addr : &str) -> Result<()> {
-        let listener = TcpListener::bind(&addr).await.expect("Can't listen");
-        log_trace!("Listening on: {}", addr);
+        let listener = TcpListener::bind(&addr)
+            .await
+            .expect(&format!("WebSocket server unable to listen on: {}", addr));
+        log_trace!("WebSocket server listening on: {}", addr);
     
         while let Ok((stream, _)) = listener.accept().await {
-            let peer = stream.peer_addr().expect("connected streams should have a peer address");
+            let peer = stream.peer_addr()
+                .expect("WebSocket connected streams should have a peer address");
             log_trace!("Peer address: {}", peer);
     
             let self_ = self.clone();
