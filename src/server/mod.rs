@@ -49,7 +49,10 @@ pub enum Error {
     /// Tungstenite WebSocket crate
     #[error("WebSocket error: {0}")]
     WebSocketError(#[from] tungstenite::Error),
-
+    
+    /// Connection terminated absormally
+    #[error("Connection closed abnormally")]
+    ConnectionClosed,
 }
 
 /// WebSocketHandler trait that represents the WebSocket processor
@@ -72,6 +75,8 @@ where Arc<Self> : Sync
     /// Called immediately when connection is established
     /// This function can return an error to terminate the connection
     async fn connect(self : &Arc<Self>, peer: SocketAddr) -> Result<Self::Context>;
+    /// Called upon websocket disconnection
+    async fn disconnect(self : &Arc<Self>, _ctx : &Self::Context, result : Result<()>) -> Result<()> { result }
     /// Called upon receipt of the first websocket message if `with_handshake()` returns true
     /// This function can return an error to terminate the connection
     async fn handshake(self : &Arc<Self>, _ctx : &Self::Context, _msg : Message, _sink : &UnboundedSender<tungstenite::Message>) -> Result<()> {  Ok(()) }
@@ -140,6 +145,7 @@ where T : WebSocketHandler + Send + Sync + 'static
         }
 
         // let mut interval = tokio::time::interval(Duration::from_millis(1000));
+        let mut result : Result<()> = Ok(());
         loop {
             tokio::select! {
                 msg = sink_receiver.recv() => {
@@ -151,14 +157,17 @@ where T : WebSocketHandler + Send + Sync + 'static
                             match msg {
                                 Ok(msg) => {
                                     match msg {
-                                        Message::Binary(_) => {
-                                            self.handler.message(&ctx, msg, &sink).await?;
-                                        },
-                                        Message::Text(_) => {
-                                            self.handler.message(&ctx, msg, &sink).await?;
+                                        Message::Binary(_) | Message::Text(_)  => {
+                                            if let Err(err) = self.handler.message(&ctx, msg, &sink).await {
+                                                result = Err(err);
+                                                break;
+                                            }
                                         },
                                         Message::Close(_) => {
-                                            self.handler.message(&ctx, msg, &sink).await?;
+                                            if let Err(err) = self.handler.message(&ctx, msg, &sink).await {
+                                                result = Err(err);
+                                                break;
+                                            }
                                             log_trace!("gracefully closing connection");
                                             break;
                                         },
@@ -169,11 +178,16 @@ where T : WebSocketHandler + Send + Sync + 'static
                                 },
                                 Err(err) => {
                                     log_error!("Closing connection: {}", err);
+                                    result = Err(Error::WebSocketError(err));
                                     break;
                                 }
                             }
                         }
-                        None => break,
+                        None => {
+                            log_error!("Connection terminated absormaly");
+                            result = Err(Error::ConnectionClosed);
+                            break;
+                        }
                     }
                 }
                 // _ = interval.tick() => {
@@ -184,6 +198,8 @@ where T : WebSocketHandler + Send + Sync + 'static
             log_trace!("LOOP TASK FINISHED SELECT!");
         }
         
+        self.handler.disconnect(&ctx,result).await?;
+
         log_trace!("LOOP TASK FINISHED LOOP!");
         Ok(())
     }
