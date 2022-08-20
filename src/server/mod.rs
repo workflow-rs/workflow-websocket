@@ -11,6 +11,7 @@ use tokio_tungstenite::accept_async;
 use futures_util::{SinkExt, StreamExt};
 use workflow_log::*;
 use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -38,6 +39,11 @@ pub enum Error {
     /// implementing WebSocket handler.
     #[error("Negotiation failure: {0}")]
     NegotiationFailureWithReason(String),
+    
+    /// Error sending response via the 
+    /// tokio mspc response channel
+    #[error("Response channel send error {0:?}")]
+    ResponseChannelError(#[from] SendError<tungstenite::Message>),
 
     /// WebSocket error produced by the underlying
     /// Tungstenite WebSocket crate
@@ -144,11 +150,21 @@ where T : WebSocketHandler + Send + Sync + 'static
                         Some(msg) => {
                             match msg {
                                 Ok(msg) => {
-                                    if msg.is_text() ||msg.is_binary() {
-                                        self.handler.message(&ctx, msg, &sink).await?;
-                                    } else if msg.is_close() {
-                                        log_trace!("gracefully closing connection");
-                                        break;
+                                    match msg {
+                                        Message::Binary(_) => {
+                                            self.handler.message(&ctx, msg, &sink).await?;
+                                        },
+                                        Message::Text(_) => {
+                                            self.handler.message(&ctx, msg, &sink).await?;
+                                        },
+                                        Message::Close(_) => {
+                                            self.handler.message(&ctx, msg, &sink).await?;
+                                            log_trace!("gracefully closing connection");
+                                            break;
+                                        },
+                                        _ => {
+                                            // TODO - should we respond to Message::Ping(_) ?
+                                        }
                                     }
                                 },
                                 Err(err) => {
