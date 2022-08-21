@@ -1,5 +1,5 @@
-use manual_future::{ManualFuture, ManualFutureCompleter};
-
+// use workflow_core::channel::oneshot;
+// use super::result::Result;
 
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub enum Ctl {
@@ -69,21 +69,21 @@ impl AsRef<[u8]> for Message {
 	}
 }
 
+#[derive(Clone)]
 pub enum DispatchMessage {
 	Post(Message),
-	WithAck(Message, ManualFutureCompleter<()>),
+	// WithAck(Message, oneshot::Sender<Result<()>>),
 	DispatcherShutdown,
 }
 
 impl DispatchMessage {
 	pub fn new( message: Message ) -> Self {
 		DispatchMessage::Post(message)
-		// DispatchMessage { message, completer : None }
 	}
-	pub fn new_with_ack(message : Message) -> (Self, ManualFuture<()>) {
-		let (future, completer) = ManualFuture::<()>::new();
-		(DispatchMessage::WithAck(message,completer), future)
-	}
+	// pub fn new_with_ack(message : Message) -> (Self, oneshot::Receiver<Result<()>>) {
+	// 	let (sender, receiver) = oneshot::channel();
+	// 	(DispatchMessage::WithAck(message,sender), receiver)
+	// }
 	pub fn is_ctl(&self) -> bool {
 		match self {
 			DispatchMessage::DispatcherShutdown => true,

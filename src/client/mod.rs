@@ -1,21 +1,24 @@
-#[cfg(target_arch = "wasm32")]
-mod wasm;
-use manual_future::ManualFuture;
-#[cfg(target_arch = "wasm32")]
-pub use wasm::WebSocketInterface;
+use cfg_if::cfg_if;
 
-#[cfg(not(target_arch = "wasm32"))]
-mod native;
-#[cfg(not(target_arch = "wasm32"))]
-pub use native::WebSocketInterface;
+cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        mod wasm;
+        pub use wasm::WebSocketInterface;
+    } else {
+        mod native;
+        pub use native::WebSocketInterface;
+    }
+}
 
+pub mod result;
 pub mod error;
 pub mod message;
 pub mod event;
 pub mod state;
 pub mod settings;
 
-pub use error::*;
+pub use result::Result;
+pub use error::Error;
 pub use message::*;
 pub use settings::*;
 
@@ -24,27 +27,25 @@ pub use settings::Settings;
 
 use std::sync::Arc;
 use async_std::channel::{Receiver,Sender,unbounded};
-use message::DispatchMessage;
+// use workflow_core::channel::oneshot;
 
-#[derive(Clone)]
+#[derive(Clone)] 
 pub struct WebSocket {
     client : Arc<WebSocketInterface>,
-    pub dispatcher_tx : Sender<DispatchMessage>,
     pub strategy : DispatchStrategy,
+    pub dispatcher_tx : Sender<DispatchMessage>,
     pub receiver_rx : Receiver<Message>,
     pub receiver_tx : Sender<Message>,
 }
 
 impl WebSocket {
-    pub fn new(url : &str, settings : Settings) -> Result<WebSocket,Error> {
+    pub fn new(url : &str, settings : Settings) -> Result<Arc<WebSocket>> {
 
         let (receiver_tx, receiver_rx) = unbounded::<Message>();
-        let (dispatcher_tx, dispatcher_tx_rx) = match settings.strategy {
-            DispatchStrategy::Post | DispatchStrategy::Ack => { 
-                let tx_rx = unbounded::<DispatchMessage>();
-                let tx = tx_rx.0.clone();
-                (tx, tx_rx)
-            },
+        let (dispatcher_tx, dispatcher_tx_rx) = { 
+            let tx_rx = unbounded::<DispatchMessage>();
+            let tx = tx_rx.0.clone();
+            (tx, tx_rx)
         };
 
         let client = Arc::new(WebSocketInterface::new(
@@ -52,8 +53,6 @@ impl WebSocket {
             receiver_tx.clone(),
             dispatcher_tx_rx
         )?);
-
-        // client.connect()?;
 
         let websocket = WebSocket {
             client,
@@ -63,10 +62,10 @@ impl WebSocket {
             receiver_tx,
         };
 
-        Ok(websocket)
+        Ok(Arc::new(websocket))
     }
 
-    pub async fn connect(self : &Arc<Self>) -> Result<(), Error> {
+    pub async fn connect(self : &Arc<Self>) -> Result<()> {
         Ok(self.client.connect().await?)
     }
 
@@ -78,7 +77,7 @@ impl WebSocket {
     //     Ok(())
     // }
 
-    pub async fn disconnect(self : &Arc<Self>) -> Result<(), Error> {
+    pub async fn disconnect(self : &Arc<Self>) -> Result<()> {
         Ok(self.client.disconnect().await?)
     }
 
@@ -90,22 +89,26 @@ impl WebSocket {
     //     Ok(())
     // }
 
-    pub async fn send(&self, message: Message) -> std::result::Result<(),Error> {
+    pub async fn send(&self, message: Message) -> Result<()> {
         if !self.client.is_open() {
             return Err(Error::NotConnected);
         }
         
-        match self.strategy {
+        let result = match self.strategy {
             DispatchStrategy::Post => {
-                self.dispatcher_tx.send(DispatchMessage::Post(message)).await?;
+                Ok(self.dispatcher_tx.send(DispatchMessage::Post(message)).await?)
             },
-            DispatchStrategy::Ack => {
-                let (future, ack) = ManualFuture::<()>::new();
-                self.dispatcher_tx.send(DispatchMessage::WithAck(message, ack)).await?;
-                future.await;
-            }
-        }
-        Ok(())
+            // DispatchStrategy::Ack => {
+            //     let (sender, receiver) = oneshot::channel();
+            //     self.dispatcher_tx.send(DispatchMessage::WithAck(message, sender)).await?;
+            //     receiver.recv().await;
+            //     Ok(())
+            // }
+        };
+
+        async_std::task::yield_now().await;
+
+        result
     }
 
 

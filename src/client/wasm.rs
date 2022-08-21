@@ -1,15 +1,13 @@
 use std::sync::{Arc, Mutex};
-use workflow_allocator::prelude::*;
 use web_sys::{ErrorEvent as WsErrorEvent, MessageEvent as WsMessageEvent, WebSocket};
 use js_sys::{ArrayBuffer,Uint8Array};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{CloseEvent as WsCloseEvent};
-// use workflow_allocator::error::{ error_code, Error, ErrorCode };
 use async_std::channel::{Receiver,Sender};
-// use workflow_allocator::result::Result;
-use workflow_allocator::log::*;
-use manual_future::{ManualFuture, ManualFutureCompleter};
+use workflow_core::task;
+use workflow_log::*;
+use triggered::{Trigger,Listener,trigger};
 
 use super::message::{Message,DispatchMessage,Ctl};
 // TODO remove CloseEvent?
@@ -17,8 +15,6 @@ use super::event::CloseEvent;
 // TODO remove State?
 use super::state::State;
 use super::error::Error;
-
-// pub use super::message::Message;
 
 impl TryFrom<u16> for State {
 	type Error = Error;
@@ -76,7 +72,7 @@ struct Inner {
     onerror : Closure::<dyn FnMut(WsErrorEvent)>,
     onopen : Closure::<dyn FnMut()>,
     onclose : Closure::<dyn FnMut(WsCloseEvent)>,
-    dispatcher_shutdown : Option<ManualFuture<()>>,
+    dispatcher_shutdown_listener : Option<Listener>,
 }
 
 pub struct WebSocketInterface {
@@ -126,8 +122,8 @@ impl WebSocketInterface {
             return Err(Error::AlreadyConnected);
         }
         
-        let (connect_future, connect_completer) = ManualFuture::<()>::new();
-        let connect_completer = Arc::new(Mutex::new(Some(connect_completer)));
+        let (connect_trigger, connect_listener) = trigger();
+        let connect_trigger = Arc::new(Mutex::new(Some(connect_trigger)));
 
         *self.reconnect.lock().unwrap() = true;
         let receiver_tx = self.receiver_tx.clone();
@@ -151,11 +147,8 @@ impl WebSocketInterface {
         let onopen = Closure::<dyn FnMut()>::new(move || {
             receiver_tx_.try_send(Message::Ctl(Ctl::Open)).expect("WebSocket: Unable to send message via the receiver_tx channel");
             log_trace!("open event");
-            if connect_completer.lock().unwrap().is_some() {
-                let completer = connect_completer.lock().unwrap().take().unwrap();
-                crate::task::spawn(async move {
-                    completer.complete(()).await;
-                });
+            if connect_trigger.lock().unwrap().is_some() {
+                connect_trigger.lock().unwrap().take().unwrap().trigger();
             }
         });
         ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
@@ -170,7 +163,7 @@ impl WebSocketInterface {
 
             Self::cleanup(&ws_);
             let self_ = self_.clone();
-            crate::task::spawn(async move {
+            task::spawn(async move {
                 log_trace!("reconnecting...");
                 self_.shutdown_dispatcher().await.expect("Unable to shutdown dispatcher");
                 if *self_.reconnect.lock().unwrap() {
@@ -178,14 +171,13 @@ impl WebSocketInterface {
                     async_std::task::sleep(std::time::Duration::from_millis(1000)).await;
                     self_.reconnect().await.ok();
                 }
-                // self_.reconnect().ok();
             });
         });
         ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
 
-        let (dispatcher_shutdown, completer) = ManualFuture::<()>::new();
-        self.dispatcher_task(ws.clone(),completer, self.dispatcher_tx_rx.1.clone());
-        let dispatcher_shutdown = Some(dispatcher_shutdown);
+        let (dispatcher_shutdown_trigger, dispatcher_shutdown_listener) = trigger();
+        self.dispatcher_task(ws.clone(),dispatcher_shutdown_trigger, self.dispatcher_tx_rx.1.clone());
+        let dispatcher_shutdown_listener = Some(dispatcher_shutdown_listener);
 
         *inner = Some(Inner {
             ws,
@@ -193,10 +185,10 @@ impl WebSocketInterface {
             onerror,
             onopen,
             onclose,
-            dispatcher_shutdown,
+            dispatcher_shutdown_listener,
         });
 
-        connect_future.await;
+        connect_listener.await;
 
         Ok(())
     
@@ -231,12 +223,12 @@ impl WebSocketInterface {
     fn dispatcher_task(
         self : &Arc<Self>,
         ws : WebSocket,
-        completer : ManualFutureCompleter<()>,
+        shutdown_trigger : Trigger,
         dispatcher_rx : Receiver<DispatchMessage>
     ) {
-        crate::task::spawn(async move {
+        workflow_core::task::spawn(async move {
 
-            let key = generate_random_pubkey();
+            let key = "123";
             loop {
                 let dispatch = dispatcher_rx.recv().await.unwrap();
 
@@ -266,41 +258,31 @@ impl WebSocketInterface {
                         }
                     },
                     
-                    DispatchMessage::WithAck(message,_completer) => {
-                        match message {
-                            Message::Binary(data) => {
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                let _result = ws.send_with_u8_array(&data);
-                                //  {
-                                    //     Ok(_) => log_trace!("binary message successfully sent"),
-                                    //     Err(err) => log_trace!("error sending message: {:?}", err),
-                                    // }
-                                },
-                                Message::Text(text) => {
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                
-                                let _result = ws.send_with_str(&text);
-                                
-                            },
-                            Message::Ctl(_) => {
-                                panic!("WebSocket Error: dispatcher received unexpected Ctl message")
-                            }
-                        }
-                    },
+                    // DispatchMessage::WithAck(message,sender) => {
+                    //     match message {
+                    //         Message::Binary(data) => {
+                    //             let result = ws.send_with_u8_array(&data)
+                    //                 .map_err(|e|e.into());
+                    //             sender.send(result).await;
+                    //         },
+                    //         Message::Text(text) => {
+                    //             let result = ws.send_with_str(&text)
+                    //                 .map_err(|e|e.into());
+                    //                 sender.send(result).await;
+                    //         },
+                    //         Message::Ctl(_) => {
+                    //             panic!("WebSocket Error: dispatcher received unexpected Ctl message")
+                    //         }
+                    //     }
+                    // },
                     DispatchMessage::DispatcherShutdown => {
                         break;
                     }
                 }
-
                 log_trace!("loop {}",key);
             }
-
             log_trace!("signaling SHUTDOWN...");
-            completer.complete(()).await;
-
+            shutdown_trigger.trigger();
         });
 
     }
@@ -313,21 +295,15 @@ impl WebSocketInterface {
     }
 
     async fn shutdown_dispatcher(self : &Arc<Self>) -> Result<(),Error> {
-        // match &self.dispatcher_tx_rx {
-        //     Some(tx_rx) => {
-                self.dispatcher_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
-                .await
-                .expect("WebSocket error: unable to dispatch ctl for dispatcher shutdown");
-    
-            let dispatcher = self.inner.lock().unwrap().as_mut().unwrap().dispatcher_shutdown.take().unwrap();
-    
-            log_trace!("!!!! waiting for dispatcher to shutdown...");
-            dispatcher.await;
-            log_trace!("!!!! dispatcher shutdown is done!");
-    
-            // },
-            // None => { }
-        // }
+        self.dispatcher_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
+            .await
+            .expect("WebSocket error: unable to dispatch ctl for dispatcher shutdown");
+
+        let dispatcher = self.inner.lock().unwrap().as_mut().unwrap().dispatcher_shutdown_listener.take().unwrap();
+
+        log_trace!("!!!! waiting for dispatcher to shutdown...");
+        dispatcher.await;
+        log_trace!("!!!! dispatcher shutdown is done!");
 
         Ok(())
     }

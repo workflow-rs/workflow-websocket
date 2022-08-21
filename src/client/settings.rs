@@ -1,9 +1,8 @@
 
 #[derive(Clone)]
 pub enum DispatchStrategy {
-    // None,
     Post,
-    Ack,
+    // Ack,
 }
 
 pub struct Settings {

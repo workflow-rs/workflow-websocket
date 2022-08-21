@@ -195,7 +195,7 @@ where T : WebSocketHandler + Send + Sync + 'static
         let listener = TcpListener::bind(&addr)
             .await
             .expect(&format!("WebSocket server unable to listen on: {}", addr));
-        log_trace!("WebSocket server listening on: {}", addr);
+        // log_trace!("WebSocket server listening on: {}", addr);
     
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()

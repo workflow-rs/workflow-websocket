@@ -4,11 +4,13 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{WebSocketStream, MaybeTlsStream};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
+use std::ops::DerefMut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use async_std::channel::{Receiver,Sender};
 use super::message::{Message,DispatchMessage,Ctl};
 use super::error::Error;
+use workflow_core::channel::oneshot;
 
 struct Settings {
     url : String,
@@ -68,14 +70,25 @@ impl WebSocketInterface {
             return Err(Error::AlreadyConnected);
         }
 
-        let (connect_tx, connect_rx) = tokio::sync::oneshot::channel();
-        let mut connect_tx = Some(connect_tx);
+        println!("CREATING CHANNEL...");
+        // let (connect_tx, connect_rx) = tokio::sync::oneshot::channel();
+        // let (connect_tx, connect_rx) = workflow_core::sync::oneshot();//::sync::oneshot::channel();
+        // let mut connect_tx = Some(connect_tx);
+
+        // let (connect_tx,connect_rx) = workflow_core::channel::oneshot();
+
+        let (connect_trigger, connect_listener) = triggered::trigger();
+        let mut connect_trigger = Some(connect_trigger);
+        // let (connext_tx, connect_rx) = oneshot::channel();
+
+        // let connect_ = connect.clone();
 
         self_.reconnect.store(true, Ordering::SeqCst);
-        core::sync::task::spawn(async move {
+        println!("STARTING TASK...");
+        core::task::spawn(async move {
             
             loop {
-
+println!("STARTING LOOP...");
                 match connect_async(&self_.url()).await {
                     Ok(stream) => {
 
@@ -86,8 +99,9 @@ impl WebSocketInterface {
                             ws_stream : Some(ws_stream)
                         });
                 
-                        // connect_completer.lock().unwrap().take().unwrap().complete(()).await;
-                        connect_tx.take().unwrap().send(()).unwrap();
+                        if connect_trigger.is_some() {
+                            connect_trigger.take().unwrap().trigger();
+                        }
 
                         if let Err(err) = self_.dispatcher().await {
                             log_error!("{}",err);
@@ -107,19 +121,23 @@ impl WebSocketInterface {
             }
         });
 
-        // connect_future.await;
-        connect_rx.await.map_err(|_| Error::ConnectChannel)?;
+        connect_listener.await;
+
 
         Ok(())
     }
 
     async fn dispatcher(self: &Arc<Self>) -> Result<(), Error> {
 
+
+
         let (mut ws_sender, mut ws_receiver) = self.inner.lock().unwrap().as_mut().unwrap().ws_stream.take().unwrap().split();
         let (_, dispatcher_rx) = &self.dispatcher_tx_rx;
+
         loop {
             tokio::select! {
                 dispatch = dispatcher_rx.recv() => {
+                // dispatch = dispatcher_rx.deref_mut().recv() => {
 
                     match dispatch.unwrap() {
                         DispatchMessage::Post(message) => {
@@ -136,15 +154,17 @@ impl WebSocketInterface {
                             }
                         },
                         
-                        DispatchMessage::WithAck(message,completer) => {
+                        DispatchMessage::WithAck(message,ack_sender) => {
                             match message {
                                 Message::Binary(data) => {
-                                    ws_sender.send(data.into()).await?;
-                                    completer.complete(()).await;
+                                    let result = ws_sender.send(data.into()).await;
+                                    // TODO
+                                    // ack_sender.send(result.into()).await;
                                 },
                                 Message::Text(text) => {
-                                    ws_sender.send(text.into()).await?;
-                                    completer.complete(()).await;
+                                    let result = ws_sender.send(text.into()).await;
+                                    // TODO
+                                    // ack_sender.send(result.into()).await;
                                 },
                                 Message::Ctl(_) => {
                                     panic!("WebSocket Error: dispatcher received unexpected Ctl message")
