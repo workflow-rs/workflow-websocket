@@ -1,5 +1,6 @@
-// use workflow_core::channel::oneshot;
-// use super::result::Result;
+use std::sync::Arc;
+use workflow_core::channel::*;
+use super::error::Error;
 
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub enum Ctl {
@@ -72,22 +73,6 @@ impl AsRef<[u8]> for Message {
 #[derive(Clone)]
 pub enum DispatchMessage {
 	Post(Message),
-	// WithAck(Message, oneshot::Sender<Result<()>>),
+	WithAck(Message, Sender<Result<Arc<()>,Arc<Error>>>),
 	DispatcherShutdown,
-}
-
-impl DispatchMessage {
-	pub fn new( message: Message ) -> Self {
-		DispatchMessage::Post(message)
-	}
-	// pub fn new_with_ack(message : Message) -> (Self, oneshot::Receiver<Result<()>>) {
-	// 	let (sender, receiver) = oneshot::channel();
-	// 	(DispatchMessage::WithAck(message,sender), receiver)
-	// }
-	pub fn is_ctl(&self) -> bool {
-		match self {
-			DispatchMessage::DispatcherShutdown => true,
-			_ => false
-		}
-	}
 }
