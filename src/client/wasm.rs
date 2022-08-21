@@ -114,7 +114,7 @@ impl WebSocketInterface {
         self.inner.lock().unwrap().as_ref().unwrap().ws.ready_state() == WebSocket::OPEN
     }
 
-    pub async fn connect(self : &Arc<Self>) -> Result<(),Error> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<(),Error> {
         
         log_trace!("connect...");
         let mut inner = self.inner.lock().unwrap();
@@ -188,7 +188,9 @@ impl WebSocketInterface {
             dispatcher_shutdown_listener,
         });
 
-        connect_listener.await;
+        if block {
+            connect_listener.await;
+        }
 
         Ok(())
     
@@ -258,23 +260,23 @@ impl WebSocketInterface {
                         }
                     },
                     
-                    // DispatchMessage::WithAck(message,sender) => {
-                    //     match message {
-                    //         Message::Binary(data) => {
-                    //             let result = ws.send_with_u8_array(&data)
-                    //                 .map_err(|e|e.into());
-                    //             sender.send(result).await;
-                    //         },
-                    //         Message::Text(text) => {
-                    //             let result = ws.send_with_str(&text)
-                    //                 .map_err(|e|e.into());
-                    //                 sender.send(result).await;
-                    //         },
-                    //         Message::Ctl(_) => {
-                    //             panic!("WebSocket Error: dispatcher received unexpected Ctl message")
-                    //         }
-                    //     }
-                    // },
+                    DispatchMessage::WithAck(message,sender) => {
+                        match message {
+                            Message::Binary(data) => {
+                                let result = ws.send_with_u8_array(&data)
+                                    .map_err(|e|Arc::new(e.into()));
+                                sender.send(result).await;
+                            },
+                            Message::Text(text) => {
+                                let result = ws.send_with_str(&text)
+                                    .map_err(|e|Arc::new(e.into()));
+                                    sender.send(result).await;
+                            },
+                            Message::Ctl(_) => {
+                                panic!("WebSocket Error: dispatcher received unexpected Ctl message")
+                            }
+                        }
+                    },
                     DispatchMessage::DispatcherShutdown => {
                         break;
                     }

@@ -4,13 +4,12 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{WebSocketStream, MaybeTlsStream};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
-use std::ops::DerefMut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use async_std::channel::{Receiver,Sender};
+use std::time::Duration;
 use super::message::{Message,DispatchMessage,Ctl};
 use super::error::Error;
-use workflow_core::channel::oneshot;
+use workflow_core::channel::*;
 
 struct Settings {
     url : String,
@@ -28,7 +27,7 @@ pub struct WebSocketInterface {
     reconnect : AtomicBool,
     is_open : AtomicBool,
     receiver_tx : Sender<Message>,
-    dispatcher_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
+    sender_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
 }
 
 impl WebSocketInterface {
@@ -36,7 +35,7 @@ impl WebSocketInterface {
     pub fn new(
         url : &str, 
         receiver_tx : Sender<Message>,
-        dispatcher_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
+        sender_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
     ) -> Result<WebSocketInterface,Error> {
         let settings = Settings { 
             url: url.to_string()
@@ -46,7 +45,7 @@ impl WebSocketInterface {
             inner : Arc::new(Mutex::new(None)),
             settings : Arc::new(Mutex::new(settings)),
             receiver_tx,
-            dispatcher_tx_rx,
+            sender_tx_rx,
             reconnect : AtomicBool::new(true),
             is_open : AtomicBool::new(false),
         };
@@ -62,35 +61,28 @@ impl WebSocketInterface {
         self.is_open.load(Ordering::SeqCst)
     }
 
-    pub async fn connect(self : &Arc<Self>) -> Result<(),Error> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<(),Error> {
         let self_ = self.clone();
         
-        log_trace!("connect...");
         if self_.inner.lock().unwrap().is_some() {
             return Err(Error::AlreadyConnected);
         }
 
-        println!("CREATING CHANNEL...");
-        // let (connect_tx, connect_rx) = tokio::sync::oneshot::channel();
-        // let (connect_tx, connect_rx) = workflow_core::sync::oneshot();//::sync::oneshot::channel();
-        // let mut connect_tx = Some(connect_tx);
-
-        // let (connect_tx,connect_rx) = workflow_core::channel::oneshot();
-
         let (connect_trigger, connect_listener) = triggered::trigger();
         let mut connect_trigger = Some(connect_trigger);
-        // let (connext_tx, connect_rx) = oneshot::channel();
-
-        // let connect_ = connect.clone();
 
         self_.reconnect.store(true, Ordering::SeqCst);
-        println!("STARTING TASK...");
+
         core::task::spawn(async move {
             
+            let mut seq = 0;
             loop {
-println!("STARTING LOOP...");
+                seq += 1;
+                println!("STARTING LOOP... {}", seq);
                 match connect_async(&self_.url()).await {
                     Ok(stream) => {
+
+                        log_trace!("connected...");
 
                         self_.is_open.store(true, Ordering::SeqCst);
                         let (ws_stream,_) = stream;
@@ -104,14 +96,14 @@ println!("STARTING LOOP...");
                         }
 
                         if let Err(err) = self_.dispatcher().await {
-                            log_error!("{}",err);
+                            log_error!("dispatcher: {}",err);
                         }
 
                         self_.is_open.store(false, Ordering::SeqCst);
                     },
                     Err(e) => {
                         log_error!("failed to connect: {}", e);
-                        // continue;
+                        workflow_core::task::sleep(Duration::from_millis(1000)).await;
                     }
                 };
 
@@ -121,24 +113,23 @@ println!("STARTING LOOP...");
             }
         });
 
-        connect_listener.await;
-
+        if block {
+            connect_listener.await;
+        }
 
         Ok(())
     }
 
     async fn dispatcher(self: &Arc<Self>) -> Result<(), Error> {
 
-
-
         let (mut ws_sender, mut ws_receiver) = self.inner.lock().unwrap().as_mut().unwrap().ws_stream.take().unwrap().split();
-        let (_, dispatcher_rx) = &self.dispatcher_tx_rx;
+        let (_, sender_rx) = &self.sender_tx_rx;
+
+        self.receiver_tx.send(Message::Ctl(Ctl::Open)).await?;
 
         loop {
             tokio::select! {
-                dispatch = dispatcher_rx.recv() => {
-                // dispatch = dispatcher_rx.deref_mut().recv() => {
-
+                dispatch = sender_rx.recv() => {
                     match dispatch.unwrap() {
                         DispatchMessage::Post(message) => {
                             match message {
@@ -157,14 +148,16 @@ println!("STARTING LOOP...");
                         DispatchMessage::WithAck(message,ack_sender) => {
                             match message {
                                 Message::Binary(data) => {
-                                    let result = ws_sender.send(data.into()).await;
-                                    // TODO
-                                    // ack_sender.send(result.into()).await;
+                                    let result = ws_sender.send(data.into()).await
+                                        .map(|ok|Arc::new(ok.into()))
+                                        .map_err(|err|Arc::new(err.into()));
+                                    ack_sender.send(result).await?;
                                 },
                                 Message::Text(text) => {
-                                    let result = ws_sender.send(text.into()).await;
-                                    // TODO
-                                    // ack_sender.send(result.into()).await;
+                                    let result = ws_sender.send(text.into()).await
+                                        .map(|ok|Arc::new(ok.into()))
+                                        .map_err(|err|Arc::new(err.into()));
+                                    ack_sender.send(result.into()).await?;
                                 },
                                 Message::Ctl(_) => {
                                     panic!("WebSocket Error: dispatcher received unexpected Ctl message")
@@ -209,12 +202,14 @@ println!("STARTING LOOP...");
                                     }
                                 },
                                 Err(e) => {
+                                    self.receiver_tx.send(Message::Ctl(Ctl::Closed)).await?;
                                     log_error!("websocket error: {}", e);
                                     break;
                                 }
                             }
                         },
                         None => {
+                            self.receiver_tx.send(Message::Ctl(Ctl::Closed)).await?;
                             log_error!("channel closed...");
                             break;
                         }
@@ -230,7 +225,7 @@ println!("STARTING LOOP...");
 
     async fn close(self : &Arc<Self>) -> Result<(),Error> {
         if self.inner.lock().unwrap().is_some() {
-            self.dispatcher_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
+            self.sender_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
                 .await.ok();
             *self.inner.lock().unwrap() = None;
         } else {
@@ -240,24 +235,9 @@ println!("STARTING LOOP...");
         Ok(())
     }
 
-    // async fn reconnect(self : &Arc<Self>) -> Result<(),Error> {
-    //     log_trace!("... starting reconnect");
-
-    //     self.close().await?;
-    //     self.connect().await?;
-
-    //     Ok(())
-    // }
-
     pub async fn disconnect(self : &Arc<Self>) -> Result<(),Error> {
         self.reconnect.store(false, Ordering::SeqCst);
         self.close().await?;
         Ok(())
-    }
-}
-
-impl Drop for WebSocketInterface {
-    fn drop(&mut self) {
-
     }
 }
