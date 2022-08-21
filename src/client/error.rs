@@ -1,16 +1,14 @@
-use async_std::channel::{SendError,TrySendError};
-// use workflow_core::channel::error::*;
-use wasm_bindgen::prelude::*;
+use workflow_core::channel::*;
+use wasm_bindgen::JsValue;
 use std::sync::PoisonError;
 use thiserror::Error;
-
 use super::message::DispatchMessage;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum Error {
 
     #[error("JsValue {0:?}")]
-    JsValue(JsValue),
+    JsValue(String),
     #[error("PoisonError")]
     PoisonError,
     
@@ -26,8 +24,10 @@ pub enum Error {
     NotConnected,
     
     
+    #[error("Dispatch channel ack error")]
+    DispatchChannelAck,
     #[error("Dispatch channel send error")]
-    DispatchChannelSend, //(SendError<DispatchMessage>),
+    DispatchChannelSend,
     #[error("Dispatch channel try_send error")]
     DispatchChannelTrySend, //(TrySendError<DispatchMessage>)
     
@@ -63,7 +63,7 @@ impl Into<JsValue> for Error {
 
 impl From<JsValue> for Error {
     fn from(error: JsValue) -> Error {
-        Error::JsValue(error)
+        Error::JsValue(format!("{:?}",error))
     }
 }
 
@@ -76,6 +76,12 @@ impl<T> From<PoisonError<T>> for Error {
 impl<T> From<SendError<T>> for Error {
     fn from(_error: SendError<T>) -> Error {
         Error::DispatchChannelSend //(error)
+    }
+}
+
+impl From<RecvError> for Error {
+    fn from(_: RecvError) -> Error {
+        Error::ReceiveChannel
     }
 }
 
