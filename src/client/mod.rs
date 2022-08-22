@@ -174,9 +174,11 @@ impl WebSocket {
         Ok(self.inner.receiver_rx.recv().await?)
     }
 
-    /// Helper function that will relay a u32 ctl value to the receiver
-    /// in the form of `Message::Ctl(Ctl::Custom(u32))`
-    pub fn custom_ctl(&self, ctl : u32) -> Result<()> {
-        Ok(self.inner.client.custom_ctl(ctl)?)
+    /// Helper function that will relay a Ctl enum to the receiver
+    /// in the form of `Message::Ctl(Ctl::*)`
+    /// This should be called only with Ctl::Custom(u32) as other
+    /// control messages are issues by the underlying websocket implementation
+    pub fn inject_ctl(&self, ctl : Ctl) -> Result<()> {
+        Ok(self.inner.client.inject_ctl(ctl)?)
     }
 }

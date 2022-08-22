@@ -362,8 +362,8 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    pub fn custom_ctl(self : &Arc<Self>, ctl : u32) -> Result<()> {
-        self.receiver_tx.try_send(Message::Ctl(Ctl::Custom(ctl)))
+    pub fn inject_ctl(self : &Arc<Self>, ctl : Ctl) -> Result<()> {
+        self.receiver_tx.try_send(Message::Ctl(ctl))
             .expect("WebSocket error: unable to send Ctl::Shutdown via the receiver channel");
 
         Ok(())
