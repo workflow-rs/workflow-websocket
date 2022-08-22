@@ -59,7 +59,7 @@ impl WebSocketInterface {
     }
  
     pub fn set_url(self : &Arc<Self>, url : &str) {
-        self.settings.lock().unwrap().url = url;
+        self.settings.lock().unwrap().url = url.into();
     }
 
     pub fn is_open(self : &Arc<Self>) -> bool {
