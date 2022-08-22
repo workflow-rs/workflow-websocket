@@ -10,6 +10,8 @@ pub enum Ctl {
 	Closed,
 	/// Dispatched when user invokes WebSocket::disconnect()
 	Shutdown,
+	/// Ctl reserved for RPC channels
+	RpcCtl(u32),
 	/// For use by external clients that need to send
 	/// themselves a custom shutdown signal
 	Custom(u32),
