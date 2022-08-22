@@ -76,3 +76,12 @@ pub enum DispatchMessage {
 	WithAck(Message, Sender<Result<Arc<()>,Arc<Error>>>),
 	DispatcherShutdown,
 }
+
+impl DispatchMessage {
+	pub fn is_ctl(&self) -> bool {
+		match self {
+			DispatchMessage::DispatcherShutdown => true,
+			_ => false
+		}
+	}
+}
