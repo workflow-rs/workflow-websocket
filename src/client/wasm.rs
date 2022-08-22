@@ -260,17 +260,25 @@ impl WebSocketInterface {
                         }
                     },
                     
-                    DispatchMessage::WithAck(message,sender) => {
+                    DispatchMessage::WithAck(message,ack_sender) => {
                         match message {
                             Message::Binary(data) => {
                                 let result = ws.send_with_u8_array(&data)
-                                    .map_err(|e|Arc::new(e.into()));
-                                sender.send(result).await;
+                                    .map(|ok|Arc::new(ok.into()))
+                                    .map_err(|err|Arc::new(err.into()));
+                                match ack_sender.send(result.into()).await {
+                                    Ok(_) => { },
+                                    Err(err) => { log_error!("WebSocket error producing message ack {:?}", err) },
+                                }
                             },
                             Message::Text(text) => {
                                 let result = ws.send_with_str(&text)
-                                    .map_err(|e|Arc::new(e.into()));
-                                    sender.send(result).await;
+                                    .map(|ok|Arc::new(ok.into()))
+                                    .map_err(|err|Arc::new(err.into()));
+                                match ack_sender.send(result.into()).await {
+                                    Ok(_) => { },
+                                    Err(err) => { log_error!("WebSocket error producing message ack {:?}", err) },
+                                }
                             },
                             Message::Ctl(_) => {
                                 panic!("WebSocket Error: dispatcher received unexpected Ctl message")
@@ -326,7 +334,7 @@ impl WebSocketInterface {
         log_trace!("... starting reconnect");
 
         self.close().await?;
-        self.connect().await?;
+        self.connect(false).await?;
 
         Ok(())
     }
