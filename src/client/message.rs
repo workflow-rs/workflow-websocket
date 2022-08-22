@@ -4,12 +4,15 @@ use super::error::Error;
 
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub enum Ctl {
+	/// Connection is opened
 	Open,
+	/// Connection is closed
 	Closed,
-	// For use by external clients that need to send
-	// themselves a shutdown signal
-	Custom(u32),
+	/// Dispatched when user invokes WebSocket::disconnect()
 	Shutdown,
+	/// For use by external clients that need to send
+	/// themselves a custom shutdown signal
+	Custom(u32),
 }
 
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]

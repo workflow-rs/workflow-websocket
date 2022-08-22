@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use web_sys::{ErrorEvent as WsErrorEvent, MessageEvent as WsMessageEvent, WebSocket};
 use js_sys::{ArrayBuffer,Uint8Array};
@@ -5,6 +6,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{CloseEvent as WsCloseEvent};
 use async_std::channel::{Receiver,Sender};
+use crate::client::result::Result;
 use workflow_core::task;
 use workflow_log::*;
 use triggered::{Trigger,Listener,trigger};
@@ -89,7 +91,7 @@ impl WebSocketInterface {
         url : &str, 
         receiver_tx : Sender<Message>,
         dispatcher_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
-    ) -> Result<WebSocketInterface,Error> {
+    ) -> Result<WebSocketInterface> {
         let settings = Settings { 
             // reconnect: true,
             url: url.to_string()
@@ -114,12 +116,12 @@ impl WebSocketInterface {
         self.inner.lock().unwrap().as_ref().unwrap().ws.ready_state() == WebSocket::OPEN
     }
 
-    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<(),Error> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<()> {
         
         log_trace!("connect...");
         let mut inner = self.inner.lock().unwrap();
         if inner.is_some() {
-            return Err(Error::AlreadyConnected);
+            return Err(Error::AlreadyInitialized);
         }
         
         let (connect_trigger, connect_listener) = trigger();
@@ -138,14 +140,17 @@ impl WebSocketInterface {
         });
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     
+        let is_connected_state = Arc::new(AtomicBool::new(false));
         let onerror = Closure::<dyn FnMut(_)>::new(move |event: WsErrorEvent| {
             log_trace!("error event: {:?}", event);
         });
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
         let receiver_tx_ = receiver_tx.clone();
+        let is_connected_state_ = is_connected_state.clone();
         let onopen = Closure::<dyn FnMut()>::new(move || {
             receiver_tx_.try_send(Message::Ctl(Ctl::Open)).expect("WebSocket: Unable to send message via the receiver_tx channel");
+            is_connected_state_.store(true, Ordering::Relaxed);
             log_trace!("open event");
             if connect_trigger.lock().unwrap().is_some() {
                 connect_trigger.lock().unwrap().take().unwrap().trigger();
@@ -156,10 +161,14 @@ impl WebSocketInterface {
         let receiver_tx_ = receiver_tx.clone();
         let ws_ = ws.clone();
         let self_ = self.clone();
+        let is_connected_state_ = is_connected_state.clone();
         let onclose = Closure::<dyn FnMut(_)>::new(move |event : WsCloseEvent| {
             let event: CloseEvent = event.into();
             log_trace!("close event: {:?}", event);
-            receiver_tx_.try_send(Message::Ctl(Ctl::Closed)).expect("WebSocket: Unable to send message via the receiver_tx channel");
+            if is_connected_state_.load(Ordering::SeqCst) {
+                receiver_tx_.try_send(Message::Ctl(Ctl::Closed)).expect("WebSocket: Unable to send message via the receiver_tx channel");
+            }
+            is_connected_state_.store(false, Ordering::Relaxed);
 
             Self::cleanup(&ws_);
             let self_ = self_.clone();
@@ -196,11 +205,11 @@ impl WebSocketInterface {
     
     }
 
-    fn ws(self: &Arc<Self>) -> Result<WebSocket,Error> {
+    fn ws(self: &Arc<Self>) -> Result<WebSocket> {
         Ok(self.inner.lock().unwrap().as_ref().unwrap().ws.clone())
     }
 
-    pub fn try_send(self : &Arc<Self>, message : &Message) -> Result<(),Error> {
+    pub fn try_send(self : &Arc<Self>, message : &Message) -> Result<()> {
 
         let ws = self.ws()?;
         match message {
@@ -304,7 +313,7 @@ impl WebSocketInterface {
         ws.set_onmessage(None);
     }
 
-    async fn shutdown_dispatcher(self : &Arc<Self>) -> Result<(),Error> {
+    async fn shutdown_dispatcher(self : &Arc<Self>) -> Result<()> {
         self.dispatcher_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
             .await
             .expect("WebSocket error: unable to dispatch ctl for dispatcher shutdown");
@@ -318,19 +327,19 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    async fn close(self : &Arc<Self>) -> Result<(),Error> {
+    async fn close(self : &Arc<Self>) -> Result<()> {
 
         let mut inner = self.inner.lock().unwrap();
         if let Some(inner_) = &mut *inner {
             inner_.ws.close()?;
             *inner = None;
         } else {
-            log_error!("Error: disconnecting from non-initialized connection");
+            log_error!("WebSocket error: disconnecting from non-initialized connection");
         }
 
         Ok(())
     }
-    async fn reconnect(self : &Arc<Self>) -> Result<(),Error> {
+    async fn reconnect(self : &Arc<Self>) -> Result<()> {
         log_trace!("... starting reconnect");
 
         self.close().await?;
@@ -338,12 +347,24 @@ impl WebSocketInterface {
 
         Ok(())
     }
-    pub async fn disconnect(self : &Arc<Self>) -> Result<(),Error> {
+    pub async fn disconnect(self : &Arc<Self>) -> Result<()> {
         *self.reconnect.lock().unwrap() = false;
         
         self.close().await.ok();
+
+        self.receiver_tx.try_send(Message::Ctl(Ctl::Shutdown))
+            .expect("WebSocket error: unable to send Ctl::Shutdown via the receiver channel");
+
         Ok(())
     }
+
+    pub fn custom_ctl(self : &Arc<Self>, ctl : u32) -> Result<()> {
+        self.receiver_tx.try_send(Message::Ctl(Ctl::Custom(ctl)))
+            .expect("WebSocket error: unable to send Ctl::Shutdown via the receiver channel");
+
+        Ok(())
+    }
+
 }
 
 impl Drop for WebSocketInterface {

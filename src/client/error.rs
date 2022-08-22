@@ -18,6 +18,8 @@ pub enum Error {
     DataEncoding,
     #[error("DataType")]
     DataType,
+    #[error("WebSocket connection already initialized")]
+    AlreadyInitialized,
     #[error("WebSocket is already connected")]
     AlreadyConnected,
     #[error("WebSocket is not connected")]

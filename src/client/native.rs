@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use super::message::{Message,DispatchMessage,Ctl};
 use super::error::Error;
+use super::result::Result;
 use workflow_core::channel::*;
 
 struct Settings {
@@ -36,7 +37,7 @@ impl WebSocketInterface {
         url : &str, 
         receiver_tx : Sender<Message>,
         sender_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
-    ) -> Result<WebSocketInterface,Error> {
+    ) -> Result<WebSocketInterface> {
         let settings = Settings { 
             url: url.to_string()
         };
@@ -61,7 +62,7 @@ impl WebSocketInterface {
         self.is_open.load(Ordering::SeqCst)
     }
 
-    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<(),Error> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<()> {
         let self_ = self.clone();
         
         if self_.inner.lock().unwrap().is_some() {
@@ -120,7 +121,7 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    async fn dispatcher(self: &Arc<Self>) -> Result<(), Error> {
+    async fn dispatcher(self: &Arc<Self>) -> Result<()> {
 
         let (mut ws_sender, mut ws_receiver) = self.inner.lock().unwrap().as_mut().unwrap().ws_stream.take().unwrap().split();
         let (_, sender_rx) = &self.sender_tx_rx;
@@ -223,7 +224,7 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    async fn close(self : &Arc<Self>) -> Result<(),Error> {
+    async fn close(self : &Arc<Self>) -> Result<()> {
         if self.inner.lock().unwrap().is_some() {
             self.sender_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
                 .await.ok();
@@ -235,9 +236,17 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    pub async fn disconnect(self : &Arc<Self>) -> Result<(),Error> {
+    pub async fn disconnect(self : &Arc<Self>) -> Result<()> {
         self.reconnect.store(false, Ordering::SeqCst);
         self.close().await?;
         Ok(())
     }
+
+    pub fn custom_ctl(self : &Arc<Self>, ctl : u32) -> Result<()> {
+        self.receiver_tx.try_send(Message::Ctl(Ctl::Custom(ctl)))
+            .expect("WebSocket error: unable to send Ctl::Shutdown via the receiver channel");
+
+        Ok(())
+    }
+
 }

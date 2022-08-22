@@ -150,4 +150,10 @@ impl WebSocket {
     pub async fn recv(&self) -> Result<Message> {
         Ok(self.inner.receiver_rx.recv().await?)
     }
+
+    /// Helper function that will relay a u32 ctl value to the receiver
+    /// in the form of `Message::Ctl(Ctl::Custom(u32))`
+    pub fn custom_ctl(&self, ctl : u32) -> Result<()> {
+        Ok(self.inner.client.custom_ctl(ctl)?)
+    }
 }
