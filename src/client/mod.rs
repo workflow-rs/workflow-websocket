@@ -10,6 +10,7 @@ cfg_if! {
     }
 }
 
+pub mod settings;
 pub mod result;
 pub mod error;
 pub mod message;
@@ -18,6 +19,7 @@ pub mod state;
 
 pub use result::Result;
 pub use error::Error;
+pub use settings::Settings;
 pub use message::*;
 
 pub use message::Message;
@@ -52,7 +54,7 @@ pub struct WebSocket {
 }
 
 impl WebSocket {
-    pub fn new(url : &str) -> Result<WebSocket> {
+    pub fn new(url : &str, _settings : Settings) -> Result<WebSocket> {
 
         let (receiver_tx, receiver_rx) = unbounded::<Message>();
         let (sender_tx, sender_tx_rx) = { 
