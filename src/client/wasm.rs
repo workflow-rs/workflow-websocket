@@ -112,7 +112,11 @@ impl WebSocketInterface {
         self.settings.lock().unwrap().url.clone()
     }
 
-    pub fn is_open(self : &Arc<Self>) -> bool {
+    pub fn set_url(self : &Arc<Self>, url : &str) {
+        self.settings.lock().unwrap().url = url.into();
+    }
+
+     pub fn is_open(self : &Arc<Self>) -> bool {
         self.inner.lock().unwrap().as_ref().unwrap().ws.ready_state() == WebSocket::OPEN
     }
 
@@ -327,7 +331,7 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    async fn close(self : &Arc<Self>) -> Result<()> {
+    pub async fn close(self : &Arc<Self>) -> Result<()> {
 
         let mut inner = self.inner.lock().unwrap();
         if let Some(inner_) = &mut *inner {

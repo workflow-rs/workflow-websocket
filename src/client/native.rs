@@ -57,6 +57,10 @@ impl WebSocketInterface {
     pub fn url(self : &Arc<Self>) -> String {
         self.settings.lock().unwrap().url.clone()
     }
+ 
+    pub fn set_url(self : &Arc<Self>, url : &str) {
+        self.settings.lock().unwrap().url = url;
+    }
 
     pub fn is_open(self : &Arc<Self>) -> bool {
         self.is_open.load(Ordering::SeqCst)
@@ -224,7 +228,7 @@ impl WebSocketInterface {
         Ok(())
     }
 
-    async fn close(self : &Arc<Self>) -> Result<()> {
+    pub async fn close(self : &Arc<Self>) -> Result<()> {
         if self.inner.lock().unwrap().is_some() {
             self.sender_tx_rx.0.send(DispatchMessage::DispatcherShutdown)
                 .await.ok();

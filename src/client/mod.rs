@@ -78,6 +78,19 @@ impl WebSocket {
         Ok(websocket)
     }
 
+    /// Get current websocket connection URL
+    pub fn url(&self) -> String {
+        self.inner.client.url()
+    }
+
+    /// Changes WebSocket connection URL.
+    /// Following this call, you must invoke
+    /// `WebSocket::reconnect().await` manually
+    pub fn set_url(&self, url : &str) {
+        self.inner.client.set_url(url);
+    }
+
+
     ///
     /// Returns reference to the transmission channel.
     /// You can clone the channel and use it directly.
@@ -113,6 +126,14 @@ impl WebSocket {
     /// Disconnects the websocket from the destination server.
     pub async fn disconnect(&self) -> Result<()> {
         Ok(self.inner.client.disconnect().await?)
+    }
+
+    /// Trigger WebSocket to reconnect.  This method
+    /// closes the underlying WebSocket connection
+    /// causing the WebSocket implementation to 
+    /// re-initiate connection.
+    pub async fn reconnect(&self) -> Result<()> {
+        Ok(self.inner.client.close().await?)
     }
 
     /// Sends a message to the destination server. This function
