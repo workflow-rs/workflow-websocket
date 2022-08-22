@@ -115,6 +115,11 @@ impl WebSocket {
         &self.inner.receiver_rx
     }
 
+    /// Returns true if websocket is connected, false otherwise
+    pub fn is_open(&self) -> bool {
+        self.inner.client.is_open()
+    }
+
     /// Connects the websocket to the destination URL.
     /// Optionally accepts `block_until_connected` argument
     /// that will block the async execution until the websocket
