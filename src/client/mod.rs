@@ -124,6 +124,14 @@ impl WebSocket {
     /// Optionally accepts `block_until_connected` argument
     /// that will block the async execution until the websocket
     /// is connected.
+    /// 
+    /// Once invoked, connection task will run in the background
+    /// and will attempt to repeatedly reconnect if the websocket
+    /// connection is closed.
+    /// 
+    /// To suspend reconnection, you have to call `disconnect()`
+    /// method explicitly.
+    /// 
     pub async fn connect(&self, block_until_connected : bool) -> Result<()> {
         Ok(self.inner.client.connect(block_until_connected).await?)
     }
