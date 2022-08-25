@@ -77,10 +77,13 @@ struct Inner {
     dispatcher_shutdown_listener : Option<Listener>,
 }
 
+unsafe impl Send for Inner { }
+unsafe impl Sync for Inner { }
+
 pub struct WebSocketInterface {
     inner : Arc<Mutex<Option<Inner>>>,
     settings : Arc<Mutex<Settings>>,
-    reconnect : Arc<Mutex<bool>>,
+    reconnect : AtomicBool,
     receiver_tx : Sender<Message>,
     dispatcher_tx_rx : (Sender<DispatchMessage>,Receiver<DispatchMessage>),
 }
@@ -102,7 +105,7 @@ impl WebSocketInterface {
             settings : Arc::new(Mutex::new(settings)),
             receiver_tx,
             dispatcher_tx_rx,
-            reconnect : Arc::new(Mutex::new(true)),
+            reconnect : AtomicBool::new(true),
         };
 
         Ok(iface)
@@ -116,7 +119,7 @@ impl WebSocketInterface {
         self.settings.lock().unwrap().url = url.into();
     }
 
-     pub fn is_open(self : &Arc<Self>) -> bool {
+    pub fn is_open(self : &Arc<Self>) -> bool {
         self.inner.lock().unwrap().as_ref().unwrap().ws.ready_state() == WebSocket::OPEN
     }
 
@@ -131,11 +134,12 @@ impl WebSocketInterface {
         let (connect_trigger, connect_listener) = trigger();
         let connect_trigger = Arc::new(Mutex::new(Some(connect_trigger)));
 
-        *self.reconnect.lock().unwrap() = true;
+        self.reconnect.store(true, Ordering::SeqCst);
         let receiver_tx = self.receiver_tx.clone();
         let ws = WebSocket::new(&self.url())?;
         ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
+        // - Message
         let receiver_tx_ = receiver_tx.clone();
         let onmessage = Closure::<dyn FnMut(_)>::new(move |event: WsMessageEvent| {
             let msg: Message = event.try_into().expect("MessageEvent Error");
@@ -144,12 +148,14 @@ impl WebSocketInterface {
         });
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     
-        let is_connected_state = Arc::new(AtomicBool::new(false));
+        // - Error
         let onerror = Closure::<dyn FnMut(_)>::new(move |event: WsErrorEvent| {
             log_trace!("error event: {:?}", event);
         });
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
+        // - Open
+        let is_connected_state = Arc::new(AtomicBool::new(false));
         let receiver_tx_ = receiver_tx.clone();
         let is_connected_state_ = is_connected_state.clone();
         let onopen = Closure::<dyn FnMut()>::new(move || {
@@ -162,6 +168,7 @@ impl WebSocketInterface {
         });
         ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
 
+        // - Close
         let receiver_tx_ = receiver_tx.clone();
         let ws_ = ws.clone();
         let self_ = self.clone();
@@ -179,7 +186,7 @@ impl WebSocketInterface {
             task::spawn(async move {
                 log_trace!("reconnecting...");
                 self_.shutdown_dispatcher().await.expect("Unable to shutdown dispatcher");
-                if *self_.reconnect.lock().unwrap() {
+                if self_.reconnect.load(Ordering::SeqCst) {
                     log_trace!("sleeping... 1 sec...");
                     async_std::task::sleep(std::time::Duration::from_millis(1000)).await;
                     self_.reconnect().await.ok();
@@ -188,6 +195,7 @@ impl WebSocketInterface {
         });
         ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
 
+        // start dispatcher
         let (dispatcher_shutdown_trigger, dispatcher_shutdown_listener) = trigger();
         self.dispatcher_task(ws.clone(),dispatcher_shutdown_trigger, self.dispatcher_tx_rx.1.clone());
         let dispatcher_shutdown_listener = Some(dispatcher_shutdown_listener);
@@ -352,7 +360,7 @@ impl WebSocketInterface {
         Ok(())
     }
     pub async fn disconnect(self : &Arc<Self>) -> Result<()> {
-        *self.reconnect.lock().unwrap() = false;
+        self.reconnect.store(false,Ordering::SeqCst);
         
         self.close().await.ok();
 
