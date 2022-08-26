@@ -80,14 +80,11 @@ impl WebSocketInterface {
 
         core::task::spawn(async move {
             
-            let mut seq = 0;
             loop {
-                seq += 1;
-                println!("STARTING LOOP... {}", seq);
                 match connect_async(&self_.url()).await {
                     Ok(stream) => {
 
-                        log_trace!("connected...");
+                        // log_trace!("connected...");
 
                         self_.is_open.store(true, Ordering::SeqCst);
                         let (ws_stream,_) = stream;
@@ -107,7 +104,7 @@ impl WebSocketInterface {
                         self_.is_open.store(false, Ordering::SeqCst);
                     },
                     Err(e) => {
-                        log_error!("failed to connect: {}", e);
+                        log_error!("failed to connect to {}: {}", self_.url(), e);
                         workflow_core::task::sleep(Duration::from_millis(1000)).await;
                     }
                 };
