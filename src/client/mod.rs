@@ -25,8 +25,9 @@ pub use message::*;
 pub use message::Message;
 
 use std::sync::Arc;
-use async_std::channel::{Receiver,Sender,unbounded};
+use async_std::channel::{Receiver,Sender,unbounded,bounded};
 use workflow_core::channel::oneshot;
+use workflow_core::trigger::Listener;
 
 struct Inner {
     client : Arc<WebSocketInterface>,
@@ -54,13 +55,24 @@ pub struct WebSocket {
 }
 
 impl WebSocket {
-    pub fn new(url : &str, _settings : Settings) -> Result<WebSocket> {
+    pub fn new(url : &str, settings : Settings) -> Result<WebSocket> {
 
-        let (receiver_tx, receiver_rx) = unbounded::<Message>();
+        let (receiver_tx, receiver_rx) = 
+            if settings.receiver_channel_bounds == 0 {
+                unbounded::<Message>()
+            } else {
+                bounded(settings.receiver_channel_bounds)
+            };
         let (sender_tx, sender_tx_rx) = { 
-            let tx_rx = unbounded::<DispatchMessage>();
-            let tx = tx_rx.0.clone();
-            (tx, tx_rx)
+            if settings.sender_channel_bounds == 0 {
+                let tx_rx = unbounded::<DispatchMessage>();
+                let tx = tx_rx.0.clone();
+                (tx, tx_rx)
+            } else {
+                let tx_rx = bounded::<DispatchMessage>(settings.sender_channel_bounds);
+                let tx = tx_rx.0.clone();
+                (tx, tx_rx)
+            }
         };
 
         let client = Arc::new(WebSocketInterface::new(
@@ -132,7 +144,7 @@ impl WebSocket {
     /// To suspend reconnection, you have to call `disconnect()`
     /// method explicitly.
     /// 
-    pub async fn connect(&self, block_until_connected : bool) -> Result<()> {
+    pub async fn connect(&self, block_until_connected : bool) -> Result<Option<Listener>> {
         Ok(self.inner.client.connect(block_until_connected).await?)
     }
 

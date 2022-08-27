@@ -123,7 +123,7 @@ impl WebSocketInterface {
         self.inner.lock().unwrap().as_ref().unwrap().ws.ready_state() == WebSocket::OPEN
     }
 
-    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<()> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<Option<Listener>> {
         
         log_trace!("connect...");
         let mut inner = self.inner.lock().unwrap();
@@ -209,11 +209,15 @@ impl WebSocketInterface {
             dispatcher_shutdown_listener,
         });
 
-        if block {
-            connect_listener.await;
+        match block {
+            true => {
+                connect_listener.await;
+                Ok(None)
+            },
+            false => {
+                Ok(Some(connect_listener))
+            }
         }
-
-        Ok(())
     
     }
 

@@ -10,6 +10,7 @@ use std::time::Duration;
 use super::message::{Message,DispatchMessage,Ctl};
 use super::error::Error;
 use super::result::Result;
+use workflow_core::trigger::*;
 use workflow_core::channel::*;
 
 struct Settings {
@@ -66,7 +67,7 @@ impl WebSocketInterface {
         self.is_open.load(Ordering::SeqCst)
     }
 
-    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<()> {
+    pub async fn connect(self : &Arc<Self>, block : bool) -> Result<Option<Listener>> {
         let self_ = self.clone();
         
         if self_.inner.lock().unwrap().is_some() {
@@ -115,11 +116,15 @@ impl WebSocketInterface {
             }
         });
 
-        if block {
-            connect_listener.await;
+        match block {
+            true => {
+                connect_listener.await;
+                Ok(None)
+            },
+            false => {
+                Ok(Some(connect_listener))
+            }
         }
-
-        Ok(())
     }
 
     async fn dispatcher(self: &Arc<Self>) -> Result<()> {
