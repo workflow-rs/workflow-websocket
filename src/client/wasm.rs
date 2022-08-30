@@ -161,7 +161,7 @@ impl WebSocketInterface {
         let onopen = Closure::<dyn FnMut()>::new(move || {
             receiver_tx_.try_send(Message::Ctl(Ctl::Open)).expect("WebSocket: Unable to send message via the receiver_tx channel");
             is_connected_state_.store(true, Ordering::Relaxed);
-            log_trace!("open event");
+            // log_trace!("open event");
             if connect_trigger.lock().unwrap().is_some() {
                 connect_trigger.lock().unwrap().take().unwrap().trigger();
             }
