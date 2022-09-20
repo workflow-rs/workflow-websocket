@@ -2,8 +2,17 @@
 name = "workflow-websocket"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/workflow-rs/workflow-websocket"
+keywords = ["wasm","websocket","browser","rpc"]
+categories = ["web-programming::websocket","web-programming::http-client","category:api-bindings"]
+exclude = ["/.*", "/test"]
+description = """
+WebSocket crate (client and server) with a symmetrical native and in-browser async Rust API
+"""
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 workflow-core = { path = "../workflow-core" }
@@ -14,19 +23,11 @@ cfg-if = "1.0.0"
 futures-util = { version = "0.3.23", default-features = false, features = ["sink", "std"] }
 manual_future = "0.1.1"
 async-std = { version = "1.12.0", features = ['attributes'] }
-# wasm-bindgen = "0.2.79"
 thiserror = "1.0.32"
-# async-oneshot = "0.5.0"
 triggered = "0.1.2"
 wasm-bindgen = "0.2.79"
 
-# tokio = { version = "1.20.1", default-features = false, features = ['io-util','time','sync','macros','rt'] }
-
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-
-# tungstenite = { version = "0.17.3", default-features = false }
-# tokio-tungstenite = "0.17.2"
-
 tokio = { version = "1.20.1", default-features = false, features = ['io-util','time','sync','macros','rt-multi-thread'] }
 async-trait = "0.1.57"
 ahash = "0.8.0"
@@ -35,12 +36,10 @@ tungstenite = { version = "0.17.3", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.29"
-# web-sys = { version = "0.3.56", features = ['console','BinaryType','Blob','FileReader'] }
 js-sys = "0.3.56"
 
 [target.'cfg(not(target_arch = "bpf"))'.dependencies.web-sys]
 version = "0.3.56"
-# optional = true
 features = [
     "console",
     "BinaryType",
