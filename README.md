@@ -1,4 +1,4 @@
-# WORKFLOW-WEBSOCKET
+## WORKFLOW-WEBSOCKET
 
 Part of the [WORKFLOW-RS](https://github.com/workflow-rs) application framework.
 
@@ -8,7 +8,7 @@ Platform-neutral WebSocket Client and Native Server
 
 Platforms supported: Native (client & server), WASM (browser: client)
 
-# Features:
+## Features
 
 * Uniform async Rust WebSocket client API that functions in the browser environment (backed by browser `WebSocket` class) as well as on native platforms (backed by [Tungstenite](https://crates.io/crates/async-tungstenite) client).
 * Trait-based WebSocket server API backed by [Tungstenite](https://crates.io/crates/async-tungstenite) server.
