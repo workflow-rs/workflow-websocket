@@ -5,19 +5,22 @@ edition = "2021"
 license = "Apache-2.0/MIT"
 repository = "https://github.com/workflow-rs/workflow-websocket"
 keywords = ["wasm","websocket","browser","rpc"]
-categories = ["web-programming::websocket","web-programming::http-client","category:api-bindings"]
+categories = ["web-programming::websocket","web-programming::http-client","api-bindings"]
 exclude = ["/.*", "/test"]
 description = """
-WebSocket crate (client and server) with a symmetrical native and in-browser async Rust API
+WebSocket crate (client and server) with a uniform native and in-browser async Rust API
 """
 
 [lib]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-workflow-core = { path = "../workflow-core" }
-workflow-log = { path = "../workflow-log" }
-workflow-wasm = { path = "../workflow-wasm" }
+workflow-core = "0.1.0"
+workflow-log = "0.1.0"
+workflow-wasm = "0.1.0"
+# workflow-core = { path = "../workflow-core" }
+# workflow-log = { path = "../workflow-log" }
+# workflow-wasm = { path = "../workflow-wasm" }
 
 cfg-if = "1.0.0"
 futures-util = { version = "0.3.23", default-features = false, features = ["sink", "std"] }
