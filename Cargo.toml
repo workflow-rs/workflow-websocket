@@ -2,7 +2,7 @@
 name = "workflow-websocket"
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0 OR MIT"
+license = "Apache-2.0/MIT"
 repository = "https://github.com/workflow-rs/workflow-websocket"
 keywords = ["wasm","websocket","browser","rpc"]
 categories = ["web-programming::websocket","web-programming::http-client","category:api-bindings"]

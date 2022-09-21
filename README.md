@@ -6,7 +6,11 @@ Part of the [WORKFLOW-RS](https://github.com/workflow-rs) application framework.
 
 Platform-neutral WebSocket Client and Native Server
 
-Platforms supported: Native (client & server), WASM (browser: client)
+[![Crates.io](https://img.shields.io/crates/l/workflow-websocket.svg?maxAge=2592000)](https://crates.io/crates/workflow-websocket)
+[![Crates.io](https://img.shields.io/crates/v/workflow-websocket.svg?maxAge=2592000)](https://crates.io/crates/workflow-websocket)
+![platform](https://img.shields.io/badge/platform-Native/client-informational)
+![platform](https://img.shields.io/badge/platform-Native/server-informational)
+![platform](https://img.shields.io/badge/platform-Web/client%20%28wasm32%29-informational)
 
 ## Features
 
