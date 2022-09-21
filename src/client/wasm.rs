@@ -143,7 +143,7 @@ impl WebSocketInterface {
         let receiver_tx_ = receiver_tx.clone();
         let onmessage = Closure::<dyn FnMut(_)>::new(move |event: WsMessageEvent| {
             let msg: Message = event.try_into().expect("MessageEvent Error");
-            log_trace!("received message: {:?}", msg);
+            // log_trace!("received message: {:?}", msg);
             receiver_tx_.try_send(msg).expect("WebSocket: Unable to send message via the receiver_tx channel");
         });
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -231,13 +231,13 @@ impl WebSocketInterface {
         match message {
             Message::Binary(data) => {
                 match ws.send_with_u8_array(&data) {
-                    Ok(_) => log_trace!("binary message successfully sent"),
+                    Ok(_) => { /* log_trace!("binary message successfully sent") */ },
                     Err(err) => log_trace!("error sending message: {:?}", err),
                 }
             },
             Message::Text(text) => {
                 match ws.send_with_str(&text) {
-                    Ok(_) => log_trace!("message successfully sent"),
+                    Ok(_) => { /* log_trace!("text message successfully sent") */ },
                     Err(err) => log_trace!("error sending message: {:?}", err),
                 }
             },
@@ -255,7 +255,6 @@ impl WebSocketInterface {
     ) {
         workflow_core::task::spawn(async move {
 
-            let key = "123";
             loop {
                 let dispatch = dispatcher_rx.recv().await.unwrap();
 
@@ -314,7 +313,6 @@ impl WebSocketInterface {
                         break;
                     }
                 }
-                log_trace!("loop {}",key);
             }
             log_trace!("signaling SHUTDOWN...");
             shutdown_trigger.trigger();
