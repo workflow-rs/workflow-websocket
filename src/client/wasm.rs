@@ -125,7 +125,7 @@ impl WebSocketInterface {
 
     pub async fn connect(self : &Arc<Self>, block : bool) -> Result<Option<Listener>> {
         
-        log_trace!("connect...");
+        // log_trace!("connect...");
         let mut inner = self.inner.lock().unwrap();
         if inner.is_some() {
             return Err(Error::AlreadyInitialized);
@@ -150,7 +150,7 @@ impl WebSocketInterface {
     
         // - Error
         let onerror = Closure::<dyn FnMut(_)>::new(move |event: WsErrorEvent| {
-            log_trace!("error event: {:?}", event);
+            // log_trace!("error event: {:?}", event);
         });
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
@@ -175,7 +175,7 @@ impl WebSocketInterface {
         let is_connected_state_ = is_connected_state.clone();
         let onclose = Closure::<dyn FnMut(_)>::new(move |event : WsCloseEvent| {
             let event: CloseEvent = event.into();
-            log_trace!("close event: {:?}", event);
+            // log_trace!("close event: {:?}", event);
             if is_connected_state_.load(Ordering::SeqCst) {
                 receiver_tx_.try_send(Message::Ctl(Ctl::Closed)).expect("WebSocket: Unable to send message via the receiver_tx channel");
             }
@@ -184,10 +184,10 @@ impl WebSocketInterface {
             Self::cleanup(&ws_);
             let self_ = self_.clone();
             task::spawn(async move {
-                log_trace!("reconnecting...");
+                // log_trace!("reconnecting...");
                 self_.shutdown_dispatcher().await.expect("Unable to shutdown dispatcher");
                 if self_.reconnect.load(Ordering::SeqCst) {
-                    log_trace!("sleeping... 1 sec...");
+                    // log_trace!("sleeping... 1 sec...");
                     async_std::task::sleep(std::time::Duration::from_millis(1000)).await;
                     self_.reconnect().await.ok();
                 }
@@ -259,7 +259,7 @@ impl WebSocketInterface {
                 let dispatch = dispatcher_rx.recv().await.unwrap();
 
                 if ws.ready_state() != WebSocket::OPEN && !dispatch.is_ctl() {
-                    log_error!("WebSocket Error: websocket is not connected");
+                    log_error!("WebSocket error: websocket is not connected");
                     continue;
                 }
 
@@ -268,13 +268,13 @@ impl WebSocketInterface {
                         match message {
                             Message::Binary(data) => {
                                 match ws.send_with_u8_array(&data) {
-                                    Ok(_) => log_trace!("binary message successfully sent"),
+                                    Ok(_) => { /*log_trace!("binary message successfully sent") */ },
                                     Err(err) => log_trace!("error sending message: {:?}", err),
                                 }
                             },
                             Message::Text(text) => {
                                 match ws.send_with_str(&text) {
-                                    Ok(_) => log_trace!("message successfully sent"),
+                                    Ok(_) => { /*log_trace!("message successfully sent") */ },
                                     Err(err) => log_trace!("error sending message: {:?}", err),
                                 }
                             },
@@ -314,7 +314,7 @@ impl WebSocketInterface {
                     }
                 }
             }
-            log_trace!("signaling SHUTDOWN...");
+            // log_trace!("signaling SHUTDOWN...");
             shutdown_trigger.trigger();
         });
 
@@ -334,9 +334,9 @@ impl WebSocketInterface {
 
         let dispatcher = self.inner.lock().unwrap().as_mut().unwrap().dispatcher_shutdown_listener.take().unwrap();
 
-        log_trace!("!!!! waiting for dispatcher to shutdown...");
+        // log_trace!("waiting for dispatcher to shutdown...");
         dispatcher.await;
-        log_trace!("!!!! dispatcher shutdown is done!");
+        // log_trace!("dispatcher shutdown is done");
 
         Ok(())
     }
@@ -354,7 +354,7 @@ impl WebSocketInterface {
         Ok(())
     }
     async fn reconnect(self : &Arc<Self>) -> Result<()> {
-        log_trace!("... starting reconnect");
+        // log_trace!("... starting reconnect");
 
         self.close().await?;
         self.connect(false).await?;
