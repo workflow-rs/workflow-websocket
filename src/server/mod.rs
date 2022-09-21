@@ -83,11 +83,12 @@ where T : WebSocketHandler + Send + Sync + 'static
     async fn handle_connection(self: &Arc<Self>, peer: SocketAddr, stream: TcpStream) -> Result<()> {
         let ws_stream = accept_async(stream).await?;
         let mut ctx = self.handler.connect(peer).await?;
-        log_trace!("New WebSocket connection from: {}", peer);
-
+        log_trace!("WebSocket connected: {}", peer);
+        
         let result = self.connection_task(&mut ctx, ws_stream).await;
         self.handler.disconnect(ctx, result).await;
-
+        log_trace!("WebSocket disconnected: {}", peer);
+        
         Ok(())
     }
 
