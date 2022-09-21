@@ -132,7 +132,7 @@ where T : WebSocketHandler + Send + Sync + 'static
                                 },
                                 Message::Close(_) => {
                                     self.handler.message(&ctx, msg, &sink).await?;
-                                    log_trace!("gracefully closing connection");
+                                    // log_trace!("gracefully closing connection");
                                     break;
                                 },
                                 _ => {
@@ -163,7 +163,7 @@ where T : WebSocketHandler + Send + Sync + 'static
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()
                 .expect("WebSocket connected streams should have a peer address");
-            log_trace!("Peer address: {}", peer);
+            // log_trace!("Peer address: {}", peer);
     
             let self_ = self.clone();
             tokio::spawn(async move {
