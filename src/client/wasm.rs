@@ -174,7 +174,7 @@ impl WebSocketInterface {
         let self_ = self.clone();
         let is_connected_state_ = is_connected_state.clone();
         let onclose = Closure::<dyn FnMut(_)>::new(move |event : WsCloseEvent| {
-            let event: CloseEvent = event.into();
+            let _event: CloseEvent = event.into();
             // log_trace!("close event: {:?}", event);
             if is_connected_state_.load(Ordering::SeqCst) {
                 receiver_tx_.try_send(Message::Ctl(Ctl::Closed)).expect("WebSocket: Unable to send message via the receiver_tx channel");
