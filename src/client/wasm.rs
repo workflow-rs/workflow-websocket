@@ -149,7 +149,7 @@ impl WebSocketInterface {
         ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     
         // - Error
-        let onerror = Closure::<dyn FnMut(_)>::new(move |event: WsErrorEvent| {
+        let onerror = Closure::<dyn FnMut(_)>::new(move |_event: WsErrorEvent| {
             // log_trace!("error event: {:?}", event);
         });
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
