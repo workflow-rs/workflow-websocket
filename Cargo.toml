@@ -41,7 +41,7 @@ tungstenite = { version = "0.17.3", default-features = false }
 wasm-bindgen-futures = "0.4.29"
 js-sys = "0.3.56"
 
-[target.'cfg(not(target_arch = "bpf"))'.dependencies.web-sys]
+[target.'cfg(not(target_os = "solana"))'.dependencies.web-sys]
 version = "0.3.56"
 features = [
     "console",
