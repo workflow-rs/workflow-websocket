@@ -2,6 +2,8 @@ use std::sync::Arc;
 use workflow_core::channel::*;
 use super::error::Error;
 
+/// Internal control message signaling WebSocket state
+/// change, WebSocket shutdown and other custom events.
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub enum Ctl {
 	/// Connection is opened
@@ -17,10 +19,15 @@ pub enum Ctl {
 	Custom(u32),
 }
 
+/// The enum containing a WebSocket or an internal control 
+/// [`Ctl`] message. This enum defines the message type.
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub enum Message {
+	/// Text message
 	Text(String),
+	/// Binary message
 	Binary(Vec<u8>),
+	/// Internal control message represented by [`Ctl`]
 	Ctl(Ctl)
 }
 
@@ -75,6 +82,11 @@ impl AsRef<[u8]> for Message {
 	}
 }
 
+/// Wrapper for a WebSocket message being dispatched to the server.
+/// This enum represents a message `Post` or `WithAck` type that
+/// contains a callback that is invoked on successful message 
+/// handoff to the underlying interface (a browser WebSocket interface
+/// of tokio WebSocket interface))
 #[derive(Clone)]
 pub enum DispatchMessage {
 	Post(Message),

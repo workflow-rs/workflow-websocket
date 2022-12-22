@@ -1,3 +1,6 @@
+//!
+//! async WebSocket server functionality (requires tokio executor)
+//! 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::net::SocketAddr;

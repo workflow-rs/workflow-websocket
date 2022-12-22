@@ -1,12 +1,16 @@
+//!
+//! async WebSocket client functionality (requires a browser (WASM) or tokio (native) executors)
+//! 
+
 use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod wasm;
-        pub use wasm::WebSocketInterface;
+        use wasm::WebSocketInterface;
     } else {
         mod native;
-        pub use native::WebSocketInterface;
+        use native::WebSocketInterface;
     }
 }
 
@@ -49,12 +53,16 @@ impl Inner {
     }
 }
 
+/// An async WebSocket implementation capable of operating
+/// uniformly under a browser-backed executor in WASM and under
+/// native tokio-runtime.
 #[derive(Clone)] 
 pub struct WebSocket {
     inner: Arc<Inner>,
 }
 
 impl WebSocket {
+    /// Create a new WebSocket instance connecting to the given URL.
     pub fn new(url : &str, settings : Settings) -> Result<WebSocket> {
 
         let (receiver_tx, receiver_rx) = 
